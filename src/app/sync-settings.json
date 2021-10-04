@@ -1,0 +1,26 @@
+{
+    "datasources": [
+        {
+            "type": "tle_file",
+            "local": false,
+            "path": "https://celestrak.com/NORAD/elements/cosmos-2251-debris.txt"
+        },
+        {
+            "type": "tle_file",
+            "local": false,
+            "path": "https://celestrak.com/NORAD/elements/1999-025.txt"
+        },
+        {
+            "type": "tle_file",
+            "local": false,
+            "path": "https://celestrak.com/NORAD/elements/iridium-33-debris.txt"
+        },
+        {
+            "type": "tle_file",
+            "local": false,
+            "path": "https://celestrak.com/NORAD/elements/2019-006.txt"
+        }
+    ],
+    "ignore_last_entries": false,
+    "download_retries": 3
+}
