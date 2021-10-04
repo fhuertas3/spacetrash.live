@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="description" content="Open source web application for real-time visualization of space debris">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="manifest" href="manifest.webmanifest" />
+	<link rel="shortcut icon" href="favicon96.png" />
+	<style>
+		.navbar {
+			overflow: hidden;
+			background-color: #333;
+			position: fixed;
+			top: 0;
+			width: 100%;
+		}
+
+		.navbar a {
+			float: left;
+			display: block;
+			color: #f2f2f2;
+			text-align: center;
+			padding: 5px 16px;
+			text-decoration: none;
+		}
+
+		.navbar a:hover {
+			background: #ddd;
+			color: black;
+		}
+
+		.main {
+			margin-top: 28px;
+		}
+
+		.status {
+			padding: 5px 12px;
+			text-align: center;
+			color: #f2f2f2;
+			position: fixed;
+			right: 0;
+		}
+
+		body { 
+			margin: 0;
+			height: 100%;
+			overflow: hidden;
+		}
+
+		.modal {
+			display: none;
+			position: fixed;
+			z-index: 1;
+			left: 0;
+			top: 0;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+			background-color: rgb(0, 0, 0);
+			background-color: rgba(0, 0, 0, 0.3);
+		}
+
+		.modal-content {
+			background-color: rgba(255, 255, 255, 0.5);
+			margin: 15% auto;
+			padding: 20px;
+			border: 1px solid #888;
+			height: auto;
+			width: 80%;
+		}
+
+		.close {
+			color: #333;
+			float: right;
+			font-size: 28px;
+			font-weight: bold;
+		}
+
+		.close:hover,
+		.close:focus {
+			color: #aaa;
+			text-decoration: none;
+			cursor: pointer;
+		}
+
+		.add-pwa-button {
+			position: absolute;
+			top: 1px;
+			left: 1px;
+		}
+	</style>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
+	<script src="https://unpkg.com/three"></script>
+	<script src="https://unpkg.com/globe.gl"></script>
+
+	<title>Space Trash Live</title>
+</head>
+
+<body>
+	<div class="navbar">
+		<a href="javascript:void(0);" style="font-weight: bold;">Space Trash</a>
+		<a href="javascript:about();">About</a>
+		<div id="elStatus" class="status">Loading...</div>
+	</div>
+
+	<button class="add-pwa-button">Add to home screen</button>
+
+	<div id="earthGlobe" class="main">
+	</div> 
+
+	<div id="modalAbout" class="modal">
+		<div class="modal-content" style="text-align: center;">
+			<span class="close">&times;</span>
+			<p>
+				<h3 style="font-weight: bold;">SpaceTrash.live</h3>
+				<a href="https://github.com/fhuertas3/spacetrash.live">Open source<a/> web application for real-time visualization of space debris.
+				<br /> <br />
+				
+				<h4>REFERENCES</h4>
+				<ul>
+					<li>NASA Open APIs (https://api.nasa.gov)</li>
+					<li>Space Debris - NASA (https://www.nasa.gov/mission_pages/station/news/orbital_debris.html)</li>
+					<li>CelesTrak (https://celestrak.com)</li>
+				</ul>
+				
+				<h4>DATA SOURCES</h4>
+				<ul>
+					<li>Stuff in Space (http://stuffin.space)</li>
+					<li>CelesTrak (https://celestrak.com)</li>
+				</ul>
+				<br />
+
+				<h4>AUTHORS</h4>
+				Miguel Huertas <br />
+				Fredy Huertas <br />
+			</p>
+		</div>
+	</div>
+
+	<script>  
+		// Earth radius in km
+		// https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html
+		const EARTH_RADIUS = 6378.137;
+
+		// debris data
+		const debrisData = [];
+
+		// create Earth globle
+		const world = Globe()
+			.globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+			.bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+			.backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+			//.showGraticules(true)
+			.showAtmosphere(true)
+			(document.getElementById('earthGlobe'));
+
+		// custom globe material
+		const globeMaterial = world.globeMaterial();
+		globeMaterial.bumpScale = 10;
+		new THREE.TextureLoader().load('https://unpkg.com/three-globe/example/img/earth-water.png', texture => {
+			globeMaterial.specularMap = texture;
+			globeMaterial.specular = new THREE.Color('grey');
+			globeMaterial.shininess = 15;
+			const directionalLight = world.scene().children.find(obj3d => obj3d.type === 'DirectionalLight');
+			directionalLight && directionalLight.position.set(1, 1, 1);
+		});
+		
+		// funtion to update position of debris
+		(function moveDebris() {
+			debrisData.forEach(d => {
+				var curTime = new Date();
+
+				var positionEci = satellite.propagate(d.satrec, curTime).position;
+				var gmst = satellite.gstime(curTime);
+				var positionGd = satellite.eciToGeodetic(positionEci, gmst);
+
+				var altitude = positionGd.height / EARTH_RADIUS;
+				var longitudeDeg = satellite.degreesLong(positionGd.longitude);
+				var latitudeDeg  = satellite.degreesLat(positionGd.latitude);
+
+				d.lat = latitudeDeg;
+				d.lng = longitudeDeg;
+				d.alt = altitude;
+			});
+
+			world.customLayerData(world.customLayerData());
+			requestAnimationFrame(moveDebris);
+		})();
+
+		// function to start auto-rotation
+		function startAutorotation() {
+			try {
+				var controls = world.controls();
+				controls.autoRotateSpeed = 0.5;
+				controls.autoRotate = true;
+			}
+			catch (e) {
+				//console.error(e);
+			}
+		}
+		//startAutorotation();
+		
+		// function to stop auto-rotation
+		function stopAutorotation() {
+			try {
+				world.controls().autoRotate = false;
+			}
+			catch (e) {
+				//console.error(e);
+			}
+		}
+
+		// element to show status
+		var elStatus = document.getElementById('elStatus');
+
+		var updatingDebris = false;
+		// function to load/update debris data
+		function updateDebris() {
+			if (updatingDebris) return;
+			
+			updatingDebris = true;
+			elStatus.innerText = 'Downloading data...';
+
+			try {
+				var xmlhttp = new XMLHttpRequest();
+				xmlhttp.open('GET', 'api/latest.json', true);
+				xmlhttp.onreadystatechange = function() {
+					if (xmlhttp.readyState == 4) {
+						updatingDebris = false;
+						if (xmlhttp.status == 200) {
+							try {
+								elStatus.innerText = 'Deserializing data...';
+
+								var obj = JSON.parse(xmlhttp.responseText);
+								//console.log(obj);
+								
+								if (obj.i && obj.i.t > 0) {
+									elStatus.innerText = 'Calculating positions...';
+
+									debrisData.splice(0, debrisData.length);
+									
+									for (var i in obj.l) {
+										var tleName = obj.l[i][0];
+										var tleLine1 = obj.l[i][1];
+										var tleLine2 = obj.l[i][2];
+
+										var satrec = satellite.twoline2satrec(tleLine1, tleLine2);
+									
+										if (satrec.error) {
+											///throw new Exception('Can't create a valid satrec.');
+											continue;
+										}
+										
+										var curTime = new Date();
+																	
+										var positionEci = satellite.propagate(satrec, curTime).position;
+
+										if (!positionEci) {
+											//throw new Exception('Can't create a ECI position.');
+											continue;
+										}
+
+										var gmst = satellite.gstime(curTime);
+
+										var positionGd = satellite.eciToGeodetic(positionEci, gmst);
+										
+										var altitude = positionGd.height / EARTH_RADIUS;
+										var longitudeDeg = satellite.degreesLong(positionGd.longitude);
+										var latitudeDeg  = satellite.degreesLat(positionGd.latitude);
+										
+										debrisData.push({
+											name: tleName,
+											lat: latitudeDeg,
+											lng: longitudeDeg,
+											alt: altitude,
+											// we have not radius data, so we use a (adecuate) random value
+											radius: Math.random() * 0.1 + 0.03 * 1.5,
+											color: 'white',
+											satrec: satrec
+										});
+
+										//console.log(debrisData);
+									}
+									
+									elStatus.innerText = 'Drawing elements...';
+
+									// update custom layer
+									world
+										.customLayerData(debrisData)
+										.customThreeObject(d => new THREE.Mesh(
+											new THREE.SphereBufferGeometry(d.radius),
+											new THREE.MeshLambertMaterial({ color: d.color })
+										))
+										.customThreeObjectUpdate((obj, d) => {
+											Object.assign(obj.position, world.getCoords(d.lat, d.lng, d.alt));
+										})
+										.onCustomLayerClick((obj, event) => {
+											//console.log(obj);
+										});
+								}
+								else {
+									console.log('No debris data in response.');
+								}
+							}
+							catch (ex) {
+								console.log(ex);;
+							}
+						}
+						else {
+							console.log('Unknow error.');
+						}
+
+						elStatus.innerText = 'Ready.';
+					}
+				};
+				xmlhttp.send(null);
+			}
+			catch (e) {
+				console.error(e);
+
+				elStatus.innerText = 'Ready.';
+				updatingDebris = false;
+			}
+		}
+		
+		// get debris data
+		//setTimeout(() => updateDebris(), 1000 * 1);
+		updateDebris();
+
+
+		// show about modal
+		function about() {
+			modalAbout.style.display = 'block';
+		}
+
+		// modal about
+		var modalAbout = document.getElementById('modalAbout');
+
+		// btn close (modal)
+		var btnCloseModal = document.getElementsByClassName('close')[0];
+
+		btnCloseModal.onclick = function() {
+			modalAbout.style.display = 'none';
+		}
+
+
+		// pwa
+		let deferredPrompt;
+		const addBtn = document.querySelector('.add-pwa-button');
+		addBtn.style.display = 'none';
+
+		window.addEventListener('beforeinstallprompt', (e) => {
+		e.preventDefault();
+		deferredPrompt = e;
+		addBtn.style.display = 'block';
+
+		addBtn.addEventListener('click', (e) => {
+			addBtn.style.display = 'none';
+			deferredPrompt.prompt();
+			deferredPrompt.userChoice.then((choiceResult) => {
+				if (choiceResult.outcome === 'accepted') {
+					//console.log('User accepted the A2HS prompt');
+				} else {
+					//console.log('User dismissed the A2HS prompt');
+				}
+				deferredPrompt = null;
+			});
+		});
+		});
+	</script>
+</body>
+</html>
